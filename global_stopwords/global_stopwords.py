@@ -6,7 +6,7 @@ import io
 import json
 import logging
 import os
-from threading import Lock
+from time import sleep
 
 from global_stopwords import settings
 from global_stopwords.errors import GlobalStopwordsError
@@ -23,29 +23,18 @@ except ImportError:  # Python 3 # pragma: no cover
     str_types = (str,)
     text = str
 
-# gevent monkey patched environment
-try:  # pragma: no cover
-    import socket
-    import gevent.socket
-
-    if socket.socket is gevent.socket.socket:
-        from gevent import sleep
-    else:
-        from time import sleep
-except (ImportError, AttributeError):  # pragma: no cover
-    from time import sleep
-
 
 logger = logging.getLogger(__package__)
 
 
 class GlobalStopwords(object):
     def __init__(self, update=False):
-        self.lock = Lock()
+        self._data = self._load(update=update)
 
-        self._data = self.load(update=update)
+    def update(self):
+        self._data = self._load(update=True)
 
-    def load(self, update=False):
+    def _load(self, update=False):
         if update is False:
             if os.path.isfile(settings.CACHE_FILE):
                 with io.open(
@@ -91,7 +80,7 @@ class GlobalStopwords(object):
                     return data
 
             except (URLError, OSError) as exc:
-                msg = 'Error occurred during fetching {url}'.format(
+                msg = 'error occurred during fetching {url}'.format(
                     url=url,
                 )
 
@@ -99,10 +88,10 @@ class GlobalStopwords(object):
 
                 if attempts == settings.HTTP_RETRIES:
                     raise GlobalStopwordsError(
-                        'Maximum amount of retries reached',
+                        'maximum amount of retries reached',
                     )
                 else:
-                    msg = 'Sleeping for {delay} seconds'.format(
+                    msg = 'sleeping for {delay} seconds'.format(
                         delay=settings.HTTP_DELAY,
                     )
 
@@ -110,7 +99,7 @@ class GlobalStopwords(object):
 
                     sleep(settings.HTTP_DELAY)
 
-    def words(self, langs=None, silent=True):
+    def words(self, langs=None, as_list=False, silent=True):
         if langs:
             data = {}
 
@@ -135,6 +124,11 @@ class GlobalStopwords(object):
                     else:
                         raise GlobalStopwordsError(msg)
 
-            return data or None
+            data = data or None
         else:
-            return self._data
+            data = self._data
+
+        if not as_list:
+            return data
+        else:
+            return list({word for lang in data.values() for word in lang})
